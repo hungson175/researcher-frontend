@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import './App.css'; // Make sure to create this file for custom styles
-// We'll import other components later
-
+import React, { useState, useEffect, useRef } from 'react';
+import './App.css'; 
 function App() {
   const [topic, setTopic] = useState('');
   const [placeholder, setPlaceholder] = useState('Generative AI impact on Software Development');
@@ -9,6 +7,53 @@ function App() {
   const [report, setReport] = useState('');
   const [isProgressVisible, setIsProgressVisible] = useState(false);
   const [user, setUser] = useState(null);
+  const [websocket, setWebsocket] = useState(null);
+  const [reportLink, setReportLink] = useState('');
+  const websocketRef = useRef(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const connectWebSocket = () => {
+    if (isConnecting) return;
+
+    setIsConnecting(true);
+    const ws = new WebSocket('ws://localhost:8000/genreport');
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      setWebsocket(ws);
+      setIsConnecting(false);
+    };
+
+    ws.onmessage = (event) => {
+      const message = event.data;
+      if (message.startsWith('Report has been saved to')) {
+        setReportLink(message.split(' ').pop());
+        setProgress(prev => [...prev, 'Report saved successfully']);
+      } else if (message.startsWith('Error:')) {
+        setProgress(prev => [...prev, message]);
+      } else {
+        // Assume any other message is a progress update
+        setProgress(prev => [...prev, message]);
+        if (message.includes('Report complete')) {
+          setReport(message);
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      setWebsocket(null);
+      setIsConnecting(false);
+      setTimeout(connectWebSocket, 5000); // Attempt to reconnect after 5 seconds
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      ws.close();
+    };
+
+    websocketRef.current = ws;
+  };
 
   useEffect(() => {
     const placeholders = [
@@ -25,11 +70,41 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    connectWebSocket();
+    return () => {
+      if (websocketRef.current) {
+        websocketRef.current.close();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (websocketRef.current) {
+      websocketRef.current.onmessage = (event) => {
+        const message = event.data;
+        if (message.startsWith('Report has been saved to')) {
+          setReportLink(message.split(' ').pop());
+          setProgress(prev => [...prev, 'Report saved successfully']);
+        } else if (message.startsWith('Error:')) {
+          setProgress(prev => [...prev, message]);
+        } else {
+          // Assume any other message is a progress update
+          setProgress(prev => [...prev, message]);
+          if (message.includes('Report complete')) {
+            setReport(message);
+          }
+        }
+      };
+    }
+  }, []);
+
   const handleCredentialResponse = (response) => {
     // Handle the encrypted JWT token
     console.log("Encoded JWT ID token: " + response.credential);
     // Here you would typically send this token to your backend for verification
     // and then set the user state based on the verified information
+    console.log("Credential response: " + response);
     setUser({ name: "Google User" }); // Placeholder, replace with actual user info
   };
 
@@ -43,16 +118,22 @@ function App() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Simulating research process
-    setProgress(['Searching for sources...']);
+    setProgress(['Initiating research process...']);
     setIsProgressVisible(true);
-    setTimeout(() => setProgress(prev => [...prev, 'Reading content...']), 2000);
-    setTimeout(() => setProgress(prev => [...prev, 'Analyzing information...']), 4000);
-    setTimeout(() => setProgress(prev => [...prev, 'Generating report...']), 6000);
-    setTimeout(() => {
-      setReport(`Here's your report on "${topic}".\n\nThis is a placeholder for the actual report content.`);
-      setProgress(prev => [...prev, 'Report complete!']);
-    }, 8000);
+    setReport('');
+    setReportLink('');
+
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      const request = {
+        query: topic,
+        report_type: "research_report",
+        report_source: "web_search"
+      };
+      websocket.send(JSON.stringify(request));
+    } else {
+      setProgress(prev => [...prev, 'Error: WebSocket connection not available. Attempting to reconnect...']);
+      connectWebSocket();
+    }
   };
 
   useEffect(() => {
@@ -136,6 +217,11 @@ function App() {
               className="report-textarea"
               placeholder="Your report will appear here..."
             />
+            {reportLink && (
+              <p>
+                View report online: <a href={reportLink} target="_blank" rel="noopener noreferrer">{reportLink}</a>
+              </p>
+            )}
           </div>
         )}
 
