@@ -1,16 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import './App.css'; 
+import ReactMarkdown from 'react-markdown';
+import { 
+  AppBar, Toolbar, Typography, Button, TextField, Container, 
+  Box, Card, CardContent, CardActions, Tab, Tabs, CircularProgress,
+  Avatar
+} from '@mui/material';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+
+const theme = createTheme();
+
 function App() {
   const [topic, setTopic] = useState('');
   const [placeholder, setPlaceholder] = useState('Generative AI impact on Software Development');
   const [progress, setProgress] = useState([]);
-  const [report, setReport] = useState('');
   const [isProgressVisible, setIsProgressVisible] = useState(false);
   const [user, setUser] = useState(null);
   const [websocket, setWebsocket] = useState(null);
-  const [reportLink, setReportLink] = useState('');
   const websocketRef = useRef(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [reportLinkEn, setReportLinkEn] = useState('');
+  const [reportLinkVi, setReportLinkVi] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isReportVisible, setIsReportVisible] = useState(false);
+  const [reportContentEn, setReportContentEn] = useState('');
+  const [reportContentVi, setReportContentVi] = useState('');
+  const [activeTab, setActiveTab] = useState('en');
 
   const connectWebSocket = () => {
     if (isConnecting) return;
@@ -25,18 +39,37 @@ function App() {
     };
 
     ws.onmessage = (event) => {
-      const message = event.data;
-      if (message.startsWith('Report has been saved to')) {
-        setReportLink(message.split(' ').pop());
-        setProgress(prev => [...prev, 'Report saved successfully']);
-      } else if (message.startsWith('Error:')) {
-        setProgress(prev => [...prev, message]);
-      } else {
-        // Assume any other message is a progress update
-        setProgress(prev => [...prev, message]);
-        if (message.includes('Report complete')) {
-          setReport(message);
+      try {
+        const message = JSON.parse(event.data);
+
+        if ('success' in message) {
+          // This is the final result
+          if (message.success) {
+            setReportContentEn(message.en_content);
+            setReportContentVi(message.vi_content);
+            setReportLinkEn(message.published_url_en);
+            setReportLinkVi(message.published_url_vi);
+            setProgress(prev => [
+              ...prev, 
+              'English report uploaded successfully to GitHub Gist',
+              'Vietnamese report uploaded successfully to GitHub Gist'
+            ]);
+            setIsReportVisible(true);
+          } else {
+            setProgress(prev => [...prev, `Error: ${message.message}`]);
+          }
+          setIsGenerating(false);
+        } else {
+          // Existing progress handling
+          const content = message.output || message;
+
+          if (typeof content === 'string') {
+            setProgress(prev => [...prev, content]);
+          }
         }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+        setIsGenerating(false);
       }
     };
 
@@ -79,26 +112,6 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (websocketRef.current) {
-      websocketRef.current.onmessage = (event) => {
-        const message = event.data;
-        if (message.startsWith('Report has been saved to')) {
-          setReportLink(message.split(' ').pop());
-          setProgress(prev => [...prev, 'Report saved successfully']);
-        } else if (message.startsWith('Error:')) {
-          setProgress(prev => [...prev, message]);
-        } else {
-          // Assume any other message is a progress update
-          setProgress(prev => [...prev, message]);
-          if (message.includes('Report complete')) {
-            setReport(message);
-          }
-        }
-      };
-    }
-  }, []);
-
   const handleCredentialResponse = (response) => {
     // Handle the encrypted JWT token
     console.log("Encoded JWT ID token: " + response.credential);
@@ -118,10 +131,12 @@ function App() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setProgress(['Initiating research process...']);
+    setProgress([]);  // Clear old progress
     setIsProgressVisible(true);
-    setReport('');
-    setReportLink('');
+    setIsGenerating(true);  // Disable the button
+    setReportLinkEn('');  // Clear old links
+    setReportLinkVi('');
+    setIsReportVisible(false);
 
     if (websocket && websocket.readyState === WebSocket.OPEN) {
       const request = {
@@ -130,8 +145,9 @@ function App() {
         report_source: "web_search"
       };
       websocket.send(JSON.stringify(request));
+      setProgress(['Initiating research process...']);
     } else {
-      setProgress(prev => [...prev, 'Error: WebSocket connection not available. Attempting to reconnect...']);
+      setProgress(['Error: WebSocket connection not available. Attempting to reconnect...']);
       connectWebSocket();
     }
   };
@@ -157,79 +173,158 @@ function App() {
   }, []);
 
   return (
-    <div className="app-container">
-      <header>
-        <h1>SonPH AI</h1>
-        <nav>
-          {user ? (
-            <>
-              <span>Welcome, {user.name}</span>
-              <button className="btn btn-ghost" onClick={handleSignOut}>Sign Out</button>
-            </>
-          ) : (
-            <button className="btn btn-ghost" onClick={handleSignIn}>Sign In with Google</button>
+    <ThemeProvider theme={theme}>
+      <Container maxWidth="lg">
+        <AppBar position="static" color="default" elevation={0}>
+          <Toolbar>
+            <Typography variant="h6" style={{ flexGrow: 1 }}>
+              SonPH AI
+            </Typography>
+            {user ? (
+              <>
+                <Typography variant="subtitle1" style={{ marginRight: '1rem' }}>
+                  Welcome, {user.name}
+                </Typography>
+                <Avatar alt={user.name} src={user.image} />
+                <Button color="inherit" onClick={handleSignOut}>Sign Out</Button>
+              </>
+            ) : (
+              <Button color="inherit" onClick={handleSignIn}>Sign In with Google</Button>
+            )}
+            <Button color="primary" variant="outlined" style={{ marginLeft: '1rem' }}>
+              Sign-up for Free
+            </Button>
+          </Toolbar>
+        </AppBar>
+
+        <Box my={4}>
+          <Typography variant="h4" gutterBottom>
+            Researcher at your fingertips
+          </Typography>
+
+          <Card variant="outlined" style={{ marginBottom: '2rem' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Write a research paper about:
+              </Typography>
+              <form onSubmit={handleSubmit}>
+                <TextField
+                  fullWidth
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder={placeholder}
+                  disabled={isGenerating}
+                  variant="outlined"
+                  style={{ marginBottom: '1rem' }}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  disabled={isGenerating}
+                  startIcon={isGenerating && <CircularProgress size={20} color="inherit" />}
+                >
+                  {isGenerating ? 'Generating report...' : 'Generate Report'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Button variant="outlined" color="primary" style={{ marginBottom: '2rem' }}>
+            Request More Credits
+          </Button>
+
+          {progress.length > 0 && (
+            <Card variant="outlined" style={{ marginBottom: '2rem' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Progress
+                </Typography>
+                <Button onClick={() => setIsProgressVisible(!isProgressVisible)}>
+                  {isProgressVisible ? 'Hide Progress' : 'Show Progress'}
+                </Button>
+                {isProgressVisible && (
+                  <Box mt={2}>
+                    <textarea
+                      value={progress.join('\n')}
+                      readOnly
+                      style={{
+                        width: '100%',
+                        height: '300px',
+                        overflowY: 'scroll',
+                        resize: 'none',
+                        fontFamily: 'monospace',
+                        fontSize: '0.9rem',
+                        padding: '8px',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
           )}
-          <button className="btn btn-outline">Sign-up for Free</button>
-        </nav>
-      </header>
-      <main>
-        <h3>Researcher at your fingertips</h3>
-        
-        <div className="input-container">
-          <h4>Write a research paper about:</h4>
-          <form onSubmit={handleSubmit}>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder={placeholder}
-            />
-            <button type="submit">Generate Report</button>
-          </form>
-        </div>
 
-        <button className="credits-btn">Request More Credits</button>
+          {isReportVisible && (
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h5" gutterBottom>
+                  Generated Report
+                </Typography>
+                <Typography variant="subtitle1" gutterBottom>
+                  View the generated report in your preferred language.
+                </Typography>
+                <Tabs
+                  value={activeTab}
+                  onChange={(event, newValue) => setActiveTab(newValue)}
+                  indicatorColor="primary"
+                  textColor="primary"
+                  centered
+                >
+                  <Tab label="English" value="en" />
+                  <Tab label="Vietnamese" value="vi" />
+                </Tabs>
+                <Box mt={2}>
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '300px',
+                      overflowY: 'scroll',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      padding: '8px',
+                    }}
+                  >
+                    <ReactMarkdown>
+                      {activeTab === 'en' ? reportContentEn : reportContentVi}
+                    </ReactMarkdown>
+                  </div>
+                </Box>
+              </CardContent>
+              <CardActions>
+                {reportLinkEn && (
+                  <Button href={reportLinkEn} target="_blank" rel="noopener noreferrer">
+                    View English report on GitHub Gist
+                  </Button>
+                )}
+                {reportLinkVi && (
+                  <Button href={reportLinkVi} target="_blank" rel="noopener noreferrer">
+                    View Vietnamese report on GitHub Gist
+                  </Button>
+                )}
+              </CardActions>
+            </Card>
+          )}
+        </Box>
 
-        {progress.length > 0 && (
-          <div className="progress-container">
-            <button 
-              className="collapsible-btn"
-              onClick={() => setIsProgressVisible(!isProgressVisible)}
-            >
-              {isProgressVisible ? 'Hide Progress' : 'Show Progress'}
-            </button>
-            {isProgressVisible && (
-              <div className="progress-content">
-                {progress.map((step, index) => (
-                  <p key={index}>{step}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {report && (
-          <div className="report-container">
-            <h4>Generated Report</h4>
-            <textarea
-              value={report}
-              readOnly
-              className="report-textarea"
-              placeholder="Your report will appear here..."
-            />
-            {reportLink && (
-              <p>
-                View report online: <a href={reportLink} target="_blank" rel="noopener noreferrer">{reportLink}</a>
-              </p>
-            )}
-          </div>
-        )}
-
-        <footer>
-          <p>Trusted by me, from AI with love :)</p>
-        </footer>
-      </main>
-    </div>
+        <Box mt={4} mb={2} textAlign="center">
+          <Typography variant="body2">
+            Trusted by me, from AI with love :)
+          </Typography>
+        </Box>
+      </Container>
+    </ThemeProvider>
   );
 }
 
