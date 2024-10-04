@@ -38,7 +38,7 @@ const theme = createTheme({
 });
 
 // const WEBSOCKET_REPORT_API_URL = 'wss://researcher-backend.onrender.com/genreport';
-const WEBSOCKET_REPORT_API_URL = process.env.WEBSOCKET_REPORT_API_URL;
+const WEBSOCKET_REPORT_API_URL = process.env.REACT_APP_WEBSOCKET_REPORT_API_URL || 'wss://researcher-backend.onrender.com/genreport';
 
 function App() {
   const [topic, setTopic] = useState('');
