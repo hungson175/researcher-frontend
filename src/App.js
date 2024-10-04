@@ -38,7 +38,7 @@ const theme = createTheme({
 });
 
 // const WEBSOCKET_REPORT_API_URL = 'wss://researcher-backend.onrender.com/genreport';
-const WEBSOCKET_REPORT_API_URL = 'ws://localhost:8000/genreport';
+const WEBSOCKET_REPORT_API_URL = process.env.WEBSOCKET_REPORT_API_URL;
 
 function App() {
   const [topic, setTopic] = useState('');
@@ -347,7 +347,7 @@ function App() {
 
         <Box mt={4} mb={2} textAlign="center">
           <Typography variant="body2" color="textSecondary">
-            Loved by over 3 million Students and Academics across the world
+            Trusted by me, from AI with love :)
           </Typography>
         </Box>
       </Container>
